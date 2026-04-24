@@ -12,9 +12,9 @@ const char* mqtt_server = "IP";
 
 Adafruit_BMP280 bmp;
 MPU6050 mpu;
-const int dhtPin = 4;
+const int dhtPin = 15;
 int sensorVal = 0;
-const int anPin= 5;
+const int anPin= 0;
 WiFiClient espClient;
 PubSubClient client(espClient);
 DHT22 dhtsens(dhtPin);
@@ -106,9 +106,15 @@ void loop() {
 
   float roll  = atan2(ay_u, az_u) * 180 / PI;
   float pitch = atan2(-ax_u, sqrt(ay_u * ay_u + az_u * az_u)) * 180 / PI;
+  static unsigned long lastDHTRead = 0;
+  static float humid = 0;
+  static float tempDHT = 0;
 
-  float humid = dhtsens.getHumidity();
-  float tempdht = dhtsens.getTemperature();
+ if (millis() - lastDHTRead > 2000) { 
+  humid = dhtsens.getHumidity();
+  tempDHT = dhtsens.getTemperature();
+  lastDHTRead = millis();
+}
 
   static unsigned long lastMsg = 0;
   if(millis() - lastMsg > 500)
@@ -117,14 +123,14 @@ void loop() {
 
     char msg[200];
     sprintf(msg, "Xaccel: %.2f Yaccel: %.2f Zaccel: %.2f Xgyro:%.2f Ygyro:%.2f Zgyro:%.2f Roll:%.2f Pitch:%.2f Presiune:%.2f Temperatura:%.2f Altitudine:%2f", 
-        ax_u, ay_u, az_u, gx_u, gy_u, gz_u, roll, pitch,  pres, temp, alt);
+        ax_u, ay_u, az_u, gx_u, gy_u, gz_u, roll, pitch, pres, temp, alt);
     Serial.print(msg);
     Serial.println(" ");
     Serial.println(sensorVal);
     Serial.println("Umiditate si temperatura: ");
-    Serial.print( humid);
+    Serial.print(humid);
     Serial.print(" ");
-    Serial.print( temp);
+    Serial.print(tempDHT);
 
     client.publish("esp32", msg);
   }
