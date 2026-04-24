@@ -1,23 +1,22 @@
-#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_BMP280.h>
+#include <MPU6050.h>
+#include <math.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
-#include <Wire.h>
 
-const char* ssid = "NAME";
-const char* password = "PASSWORD";
+const char* ssid = "NUME_HOTSPOT";
+const char* password = "PAROLA";
+const char* mqtt_server = "IP";
 
-const char* mqtt_server = "IP"; 
-
-#define SDA_PIN 6
-#define SCL_PIN 7
+Adafruit_BMP280 bmp;
+MPU6050 mpu;
+int sensorVal = 0;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-Adafruit_MPU6050 mpu;
-
-void setup_wifi() {
+void setup_wifi()
+{
   delay(10);
   Serial.println();
   Serial.print("Connecting to: ");
@@ -26,16 +25,15 @@ void setup_wifi() {
   WiFi.setSleep(false);
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED)
+  {
     delay(500);
     Serial.print(".");
   }
-
   Serial.println("\nWiFi connected");
   Serial.print("IP: ");
   Serial.println(WiFi.localIP());
 }
-
 void reconnect() {
   while (!client.connected()) {
     Serial.print("Connecting to MQTT broker... ");
@@ -52,44 +50,65 @@ void reconnect() {
     }
   }
 }
-
 void setup() {
   Serial.begin(115200);
-  delay(3000); 
-
+  Wire.begin(6, 7);
+  Serial.println("Pornire...");
+  //WiFi
   setup_wifi();
   client.setServer(mqtt_server, 1883);
 
-  Wire.begin(SDA_PIN, SCL_PIN);
-  if (!mpu.begin(0x68, &Wire)) {
-    Serial.println("MPU6050 not found");
-    while (1) { delay(10); } 
+  // BMP280
+  if (!bmp.begin(0x76)) {
+    Serial.println("Eroare BMP280!");
+    while (1);
+  } else {
+    Serial.println("BMP280 OK");
   }
-  Serial.println("MPU6050 initialized");
-  
-  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+
+  // MPU6050 
+  mpu.initialize();
+  if (!mpu.testConnection()) {
+    Serial.println("Eroare MPU6050!");
+    while (1);
+  } else {
+    Serial.println("MPU6050 OK");
+  }
 }
 
 void loop() {
+  //WiFi
   if (!client.connected()) {
     reconnect();
   }
   client.loop();
+  // BMP280 
+  float temp = bmp.readTemperature();
+  float pres = bmp.readPressure() / 100.0;
+
+  // MPU6050 
+  int16_t ax, ay, az;
+  mpu.getAcceleration(&ax, &ay, &az);
+
+  float ax_g = ax / 16384.0;
+  float ay_g = ay / 16384.0;
+  float az_g = az / 16384.0;
+
+
+  float roll  = atan2(ay_g, az_g) * 180 / PI;
+  float pitch = atan2(-ax_g, sqrt(ay_g * ay_g + az_g * az_g)) * 180 / PI;
 
   static unsigned long lastMsg = 0;
-  if (millis() - lastMsg > 500) {
+  if(millis() - lastMsg > 500)
+  {
     lastMsg = millis();
 
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
-
-    char msg[50];
-    sprintf(msg, "X:%.2f Y:%.2f Z:%.2f", g.gyro.x, g.gyro.y, g.gyro.z);
-
-    Serial.print("Publishing: ");
-    Serial.println(msg);
-
-    client.publish("esp32/giroscop", msg);
+    char msg[150];
+    sprintf(msg, "Xgyro:%.2f Ygyro:%.2f Zgyro:%.2f Roll:%.2f Pitch:%.2f Presiune:%.2f Temperatura:%2.f" , ax_g, ay_g, az_g, roll, pitch, pres, temp);
+    Serial.print(msg);
+    Serial.println(" ");
+    client.publish("esp32", msg);
   }
+
+  delay(500);
 }
