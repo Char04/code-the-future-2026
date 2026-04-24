@@ -13,7 +13,7 @@ const char* mqtt_server = "IP";
 Adafruit_BMP280 bmp;
 MPU6050 mpu;
 const int dhtPin = 15;
-int sensorVal = 0;
+float sensorVal = 0;
 const int anPin= 0;
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -56,8 +56,6 @@ void reconnect() {
 void setup() {
   Serial.begin(115200);
   Wire.begin(6, 7);
-  Serial.println("Pornire...");
-  //DHT22
 
   //WiFi
   setup_wifi();
@@ -65,7 +63,7 @@ void setup() {
 
   //BMP280
   if (!bmp.begin(0x76)) {
-    Serial.println("Eroare BMP280!");
+    Serial.println("Error BMP280");
     while (1);
   } else {
     Serial.println("BMP280 OK");
@@ -74,7 +72,7 @@ void setup() {
   //MPU6050
   mpu.initialize();
   if (!mpu.testConnection()) {
-    Serial.println("Eroare MPU6050!");
+    Serial.println("Error MPU6050");
     while (1);
   } else {
     Serial.println("MPU6050 OK");
@@ -110,30 +108,20 @@ void loop() {
   static float humid = 0;
   static float tempDHT = 0;
 
- if (millis() - lastDHTRead > 2000) { 
+  if (millis() - lastDHTRead > 2000) {
   humid = dhtsens.getHumidity();
   tempDHT = dhtsens.getTemperature();
   lastDHTRead = millis();
-}
-
+  }
   static unsigned long lastMsg = 0;
-  if(millis() - lastMsg > 500)
+  if(millis() - lastMsg > 100)
   {
     lastMsg = millis();
 
     char msg[200];
-    sprintf(msg, "Xaccel: %.2f Yaccel: %.2f Zaccel: %.2f Xgyro:%.2f Ygyro:%.2f Zgyro:%.2f Roll:%.2f Pitch:%.2f Presiune:%.2f Temperatura:%.2f Altitudine:%2f", 
-        ax_u, ay_u, az_u, gx_u, gy_u, gz_u, roll, pitch, pres, temp, alt);
-    Serial.print(msg);
-    Serial.println(" ");
-    Serial.println(sensorVal);
-    Serial.println("Umiditate si temperatura: ");
-    Serial.print(humid);
-    Serial.print(" ");
-    Serial.print(tempDHT);
-
+    sprintf(msg, "Xaccel: %.2f Yaccel: %.2f Zaccel: %.2f Xgyro:%.2f Ygyro:%.2f Zgyro:%.2f Roll:%.2f Pitch:%.2f Presiune:%.2f TemperChip:%.2f Altitudine:%2f TempOut:%.2f Umid:%.2f Gaz:%.2f", 
+        ax_u, ay_u, az_u, gx_u, gy_u, gz_u, roll, pitch, pres, temp, alt, tempDHT, humid, sensorVal);
+    Serial.println(msg);
     client.publish("esp32", msg);
   }
-
-  delay(500);
 }
