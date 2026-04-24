@@ -1,6 +1,7 @@
 import paho.mqtt.client as mqtt
 import tkinter as tk
 from tkinter import font
+from tkinter import messagebox
 import time
 
 data = {
@@ -20,8 +21,12 @@ alpha = 0.15
 temp_offset = 0.0
 hum_offset = 0.0
 pres_offset = 0.0  
+gaz_offset = 0.0  
+
 settings_window = None
 current_hover = None
+last_disp_gaz = None
+gaz_alert_shown = False
 
 def on_message(client, userdata, msg):
     global data, home_alt
@@ -41,6 +46,7 @@ def on_message(client, userdata, msg):
             data["pres"] = float(parts[17])
             data["temp"] = float(parts[19])
             data["alt"] = float(parts[21])
+            
             if len(parts) >= 28:
                 data["tempOut"] = float(parts[23])
                 data["umid"] = float(parts[25])
@@ -51,17 +57,32 @@ def on_message(client, userdata, msg):
     except Exception:
         pass
 
-def apply_settings(off_val, temp_sim_val, hum_sim_val, pres_sim_val):
-    global home_alt, stable_start_time, current_offset, temp_offset, hum_offset, pres_offset
+def apply_settings(off_val, temp_sim_val, hum_sim_val, pres_sim_val, gaz_sim_val):
+    global home_alt, stable_start_time, current_offset, temp_offset, hum_offset, pres_offset, gaz_offset, last_disp_gaz
     try:
         current_offset = float(off_val)
         home_alt = data["alt"] - current_offset
         temp_offset = float(temp_sim_val) - data["temp"]
         hum_offset = float(hum_sim_val) - data["umid"]
         pres_offset = float(pres_sim_val) - data["pres"]
+        gaz_offset = float(gaz_sim_val) - data["gaz"]
+        last_disp_gaz = float(gaz_sim_val) 
         stable_start_time = time.time()
     except ValueError:
         pass
+
+def reset_sim():
+    global home_alt, stable_start_time, current_offset, temp_offset, hum_offset, pres_offset, gaz_offset, last_disp_gaz
+    current_offset = 0.0
+    temp_offset = 0.0
+    hum_offset = 0.0
+    pres_offset = 0.0
+    gaz_offset = 0.0
+    home_alt = data["alt"]
+    last_disp_gaz = data["gaz"]
+    stable_start_time = time.time()
+    if settings_window is not None:
+        settings_window.destroy()
 
 def open_settings():
     global settings_window
@@ -71,7 +92,7 @@ def open_settings():
 
     settings_window = tk.Toplevel(root)
     settings_window.title("Panou Setari")
-    settings_window.geometry("350x520")  
+    settings_window.geometry("350x640")  
     settings_window.configure(bg='#1e272e')
 
     tk.Label(settings_window, text="SIMULARE ALTITUDINE (m)", fg="#0fbcf9", bg='#1e272e', font=label_font).pack(pady=(20, 5))
@@ -97,9 +118,16 @@ def open_settings():
     hum_entry.insert(0, f"{(data['umid'] + hum_offset):.1f}")
     hum_entry.pack()
 
+    tk.Label(settings_window, text="SIMULARE GAZ", fg="#0fbcf9", bg='#1e272e', font=label_font).pack(pady=(20, 5))
+    gaz_entry = tk.Entry(settings_window, font=label_font, width=15, bg="#2f3640", fg="white", justify="center")
+    gaz_entry.insert(0, f"{(data['gaz'] + gaz_offset):.1f}")
+    gaz_entry.pack()
+
     tk.Button(settings_window, text="APLICA MODIFICARI", 
-              command=lambda: apply_settings(off_entry.get(), temp_entry.get(), hum_entry.get(), pres_entry.get()), 
-              font=label_font, bg="#0fbcf9", fg="black").pack(pady=20)
+              command=lambda: apply_settings(off_entry.get(), temp_entry.get(), hum_entry.get(), pres_entry.get(), gaz_entry.get()), 
+              font=label_font, bg="#0fbcf9", fg="black").pack(pady=(20, 10))
+
+    tk.Button(settings_window, text="RESET LA DATE REALE", command=reset_sim, font=label_font, bg="#ff5e57", fg="white").pack(pady=5)
 
 def enter_hover(status_name): 
     global current_hover
@@ -120,7 +148,7 @@ client.subscribe("esp32")
 client.loop_start()
 
 root = tk.Tk()
-root.title("Cockpit Telemetrie ESP32")
+root.title("Turn Control")
 win_w, win_h = 1100, 780
 root.geometry(f"{win_w}x{win_h}")
 root.configure(bg='#1e272e')
@@ -158,7 +186,7 @@ txt_tempOut = main_canvas.create_text(40, 370, text="tempOut: 0.0°C", fill="#ff
 txt_tempChip = main_canvas.create_text(40, 400, text="tempChip: 0.0°C", fill="#ff5e57", font=value_font, anchor="w")
 
 right_x = win_w - 40
-main_canvas.create_text(right_x, 40, text="ATMOSFERĂ", fill="#ffdd59", font=title_font, anchor="e")
+main_canvas.create_text(right_x, 40, text="ATMOSFERA", fill="#ffdd59", font=title_font, anchor="e")
 txt_pres = main_canvas.create_text(right_x, 70, text="0.0 hPa", fill="#0be881", font=value_font, anchor="e")
 txt_umid = main_canvas.create_text(right_x, 100, text="0.0 %", fill="#0be881", font=value_font, anchor="e")
 txt_gaz = main_canvas.create_text(right_x, 130, text="0.0", fill="#0be881", font=value_font, anchor="e")
@@ -168,8 +196,10 @@ txt_alt_rel = main_canvas.create_text(right_x, 440, text="+0.00m", fill="#0fbcf9
 
 alt_canvas = tk.Canvas(root, width=70, height=200, bg="#2f3640", highlightthickness=1, highlightbackground="#0fbcf9")
 alt_canvas.place(x=right_x - 35, y=210, anchor="n")
+
 for i in range(20, 200, 40):
     alt_canvas.create_line(35, i, 55, i, fill="#718093")
+    
 alt_canvas.create_polygon(5, 100, 15, 93, 15, 107, fill="#0fbcf9")
 alt_marker = alt_canvas.create_rectangle(20, 95, 65, 105, fill="#0fbcf9", outline="white")
 
@@ -177,7 +207,6 @@ btn_settings = tk.Button(root, text="SETARI & SIMULARE", command=open_settings, 
 btn_settings.place(x=right_x, y=480, anchor="e")
 
 max_alt_var = tk.StringVar(value="520.0")
-
 stat_y = win_h - 40
 sep_y1, sep_y2 = win_h - 50, win_h - 30
 
@@ -201,10 +230,12 @@ main_canvas.tag_bind("hover_hum", "<Leave>", leave_hover)
 txt_hover_desc = main_canvas.create_text(cx, win_h - 90, text="", fill="#d2dae2", font=hover_font)
 
 def update_gui():
-    global home_alt, last_stable_val, stable_start_time, smooth_alt_y, current_offset
+    global home_alt, last_stable_val, stable_start_time, smooth_alt_y, current_offset, last_disp_gaz, gaz_alert_shown
+    
     if home_alt is None:
         root.after(50, update_gui)
         return
+        
     curr_alt = data["alt"]
     
     if abs(curr_alt - last_stable_val) > 0.15:
@@ -218,6 +249,23 @@ def update_gui():
     disp_temp = data["temp"] + temp_offset
     disp_hum = data["umid"] + hum_offset
     disp_pres = data["pres"] + pres_offset  
+    disp_gaz = data["gaz"] + gaz_offset
+
+    if last_disp_gaz is None:
+        last_disp_gaz = disp_gaz
+
+    is_spike = (disp_gaz - last_disp_gaz) > 500
+    is_critical = disp_gaz >= 2000
+
+    if is_spike or is_critical:
+        if not gaz_alert_shown:
+            gaz_alert_shown = True
+            messagebox.showwarning("Alerta de Siguranta", "Check for short circuit")
+    else:
+        if disp_gaz < 2000:
+            gaz_alert_shown = False
+
+    last_disp_gaz = disp_gaz
             
     main_canvas.itemconfig(txt_gx, text=f"X: {data['gx']:>6.2f}")
     main_canvas.itemconfig(txt_gy, text=f"Y: {data['gy']:>6.2f}")
@@ -229,7 +277,7 @@ def update_gui():
     main_canvas.itemconfig(txt_tempChip, text=f"tempChip: {disp_temp:.1f}°C")
     main_canvas.itemconfig(txt_pres, text=f"{disp_pres:.1f} hPa")
     main_canvas.itemconfig(txt_umid, text=f"{disp_hum:.1f} %")
-    main_canvas.itemconfig(txt_gaz, text=f"{data['gaz']:.1f}")
+    main_canvas.itemconfig(txt_gaz, text=f"{disp_gaz:.1f}")
     
     rel_alt = curr_alt - home_alt
     main_canvas.itemconfig(txt_alt_rel, text=f"{rel_alt:+.2f}m")
